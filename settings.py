@@ -1,0 +1,2 @@
+TOKEN = '5856287769:AAGM4vvNd2Tf_6q-LDyIqZhUAaEIkb-yngM'
+OPENAI_API_KEY = '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'
