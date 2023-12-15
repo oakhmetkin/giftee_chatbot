@@ -38,7 +38,7 @@ class ParserWB:
                 resp_json = response.json()
                 products = resp_json['data']['products']
                 for i in range(len(products)):
-                    product_links.append(self.__create_link(products[i]['id']))
+                    product_links.append((self.__create_link(products[i]['id']), products[i]['name']))
                 count -= len(products)
             else:
                 print("Ошибка при запросе к сайту WB")
