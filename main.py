@@ -8,14 +8,14 @@ import keyboards
 from states import GiftRecState
 from settings import TOKEN
 
-from markets_parser import get_links
-
+from markets_parser import ParserWB
 
 HTML_PM = ParseMode.HTML
 
 storage = MemoryStorage()
 bot = Bot(TOKEN)
 dp = Dispatcher(bot, storage=storage)
+parser = ParserWB()
 
 
 @dp.message_handler(commands=['start', 'help'], state='*')
@@ -58,8 +58,8 @@ async def quest2(message: Message, state: FSMContext):
 '''
     await GiftRecState.next()
     await message.answer(text, parse_mode=HTML_PM)
-    
-    
+
+
 @dp.message_handler(state=GiftRecState.deep_quest)
 async def quest3(message: Message, state: FSMContext):
     async with state.proxy() as data:
@@ -80,8 +80,8 @@ async def quest3(message: Message, state: FSMContext):
 '''
     await GiftRecState.next()
     await message.answer(text, parse_mode=HTML_PM)
-    
-    
+
+
 @dp.message_handler(state=GiftRecState.lifestyle_quest)
 async def quest4(message: Message, state: FSMContext):
     async with state.proxy() as data:
@@ -97,8 +97,8 @@ async def quest4(message: Message, state: FSMContext):
 '''
     await GiftRecState.next()
     await message.answer(text, parse_mode=HTML_PM)
-    
-    
+
+
 @dp.message_handler(state=GiftRecState.gift_desc)
 async def quest5(message: Message, state: FSMContext):
     async with state.proxy() as data:
@@ -111,8 +111,8 @@ async def quest5(message: Message, state: FSMContext):
 '''
     await GiftRecState.next()
     await message.answer(text, parse_mode=HTML_PM)
-    
-    
+
+
 @dp.message_handler(state=GiftRecState.budget)
 async def quest6(message: Message, state: FSMContext):
     async with state.proxy() as data:
@@ -141,16 +141,16 @@ async def quest6(message: Message, state: FSMContext):
 '''
     await GiftRecState.next()
     await message.answer(text, reply_markup=keyboards.check_markup, parse_mode=HTML_PM)
-    
-    
+
+
 @dp.message_handler(state=GiftRecState.check)
 async def quest_final(message: Message, state: FSMContext):
     msg = message.text
 
     if msg == 'OK':
         await message.answer('Ищу подарки...', reply_markup=keyboards.none, parse_mode=HTML_PM)
-        
-        query = { }
+
+        query = {}
         async with state.proxy() as data:
             for key in ['base', 'deep', 'lifestyle', 'gift', 'budget']:
                 query[key + '_info'] = data[key + '_info']
@@ -158,9 +158,18 @@ async def quest_final(message: Message, state: FSMContext):
         try:
             gpt_answer = ask_gpt(query)
             gift_names = get_gift_names(gpt_answer)
-            links = get_links(gift_names)
-            links_as_str = '\n'.join(links)
-            answer = f'{gpt_answer}\n\nКупить подарки можно здесь:\n{links_as_str}'
+            links = parser.get_links(gift_names)
+
+            def format_links(item_list):
+                formatted_string = ""
+
+                for link, item in item_list:
+                    formatted_string += f"{item}:\n \t {link}\n\n"
+
+                return formatted_string
+
+            result_products = format_links(links)
+            answer = f'{gpt_answer}\n\nКупить подарки можно здесь:\n\n{result_products}'
 
             await message.answer(answer, parse_mode=HTML_PM)
         except:
