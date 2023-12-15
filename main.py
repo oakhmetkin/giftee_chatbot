@@ -8,7 +8,7 @@ import keyboards
 from states import GiftRecState
 from settings import TOKEN
 
-from markets_parser import get_links
+from markets_parser import ParserWB
 
 
 HTML_PM = ParseMode.HTML
@@ -16,6 +16,7 @@ HTML_PM = ParseMode.HTML
 storage = MemoryStorage()
 bot = Bot(TOKEN)
 dp = Dispatcher(bot, storage=storage)
+parser = ParserWB()
 
 
 @dp.message_handler(commands=['start', 'help'], state='*')
@@ -158,7 +159,7 @@ async def quest_final(message: Message, state: FSMContext):
         try:
             gpt_answer = ask_gpt(query)
             gift_names = get_gift_names(gpt_answer)
-            links = get_links(gift_names)
+            links = parser.get_links(gift_names)
             links_as_str = '\n'.join(links)
             answer = f'{gpt_answer}\n\nКупить подарки можно здесь:\n{links_as_str}'
 
