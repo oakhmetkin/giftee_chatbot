@@ -158,7 +158,9 @@ async def quest_final(message: Message, state: FSMContext):
         try:
             gpt_answer = ask_gpt(query)
             gift_names = get_gift_names(gpt_answer)
-            links = parser.get_links(gift_names)
+
+            budget = data['budget_info']
+            links = parser.get_links(gift_names, max_price=budget)
 
             def format_links(item_list):
                 formatted_string = ""
