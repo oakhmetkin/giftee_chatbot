@@ -163,12 +163,14 @@ async def quest_final(message: Message, state: FSMContext):
             def format_links(item_list):
                 formatted_string = ""
 
-                for link, item in item_list:
-                    formatted_string += f"{item}:\n \t {link}\n\n"
+                for link, item, price in item_list:
+                    formatted_string += f"{item} по цене {price}:\n \t {link}\n\n"
 
                 return formatted_string
 
-            result_products = format_links(links)
+
+
+            result_products = format_links(sorted(links, key=lambda x: x[2]))
             answer = f'{gpt_answer}\n\nКупить подарки можно здесь:\n\n{result_products}'
 
             await message.answer(answer, parse_mode=HTML_PM)
