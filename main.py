@@ -2,13 +2,16 @@ from aiogram import Bot, Dispatcher, executor
 from aiogram.types import Message, ParseMode
 from aiogram.dispatcher import FSMContext
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+import asyncio
 
-from gpt_requester import ask_gpt, get_gift_names
 import keyboards
 from states import GiftRecState
 from settings import TOKEN
 
+from gpt_requester import ask_gpt, get_gift_names
+from answer_saver import save_answer
 from markets_parser import ParserWB
+
 
 HTML_PM = ParseMode.HTML
 
@@ -21,11 +24,21 @@ parser = ParserWB()
 @dp.message_handler(commands=['start', 'help'], state='*')
 async def send_help(message: Message, state: FSMContext):
     help_message = '''
-Привет! Это чат-бот Giftee team. 
-Мы поможем подобрать вам подарок
+Привет! Это чат-бот Giftee team.
+Мы поможем подобрать вам подарок. 🎁
+
+На каждом шаге не стесняйтесь писать уточняющие подробности, если считаете их \
+действительно важными. Но в то же время, старайтесь писать лаконично. 🌝
+
+Также, если сомневаетесь в ответе на какой-либо из следующих вопросов, то \
+можете написать "не знаю", однако это повлияет на подбор подарков. 🤔
 '''
     await GiftRecState.start.set()
-    await message.answer(help_message, reply_markup=keyboards.start_markup, parse_mode=HTML_PM)
+    await message.answer(
+        help_message, 
+        reply_markup=keyboards.start_markup, 
+        parse_mode=HTML_PM
+    )
 
 
 @dp.message_handler(state=GiftRecState.start)
@@ -76,7 +89,7 @@ async def quest3(message: Message, state: FSMContext):
 6. Семейный образ жизни: Фокус на семье, забота о близких, время проведение в кругу родных и друзей. 
 7. Путешественнический образ жизни: Люди, предпочитающие путешествия, новые культуры и приключения. 
 
-<i>Пример ответа: "Активный"</i>
+<i>Пример ответов: "Активный", "Активный и творческий"</i>
 '''
     await GiftRecState.next()
     await message.answer(text, parse_mode=HTML_PM)
@@ -93,7 +106,7 @@ async def quest4(message: Message, state: FSMContext):
 1. На какой праздник подбираем подарок (Новый год, День рождения, др.) 
 2. Какой тип подарка вы ищете (полезный, запоминающийся)
 
-<i>Пример ответа: "Запоминающийся подарок на новый год"</i>
+<i>Примеры ответов: "Запоминающийся подарок на новый год", "Полезный подарок на день рождения"</i>
 '''
     await GiftRecState.next()
     await message.answer(text, parse_mode=HTML_PM)
@@ -140,7 +153,11 @@ async def quest6(message: Message, state: FSMContext):
 Если все верно, то нажмите "OK", иначе "Начать заново".
 '''
     await GiftRecState.next()
-    await message.answer(text, reply_markup=keyboards.check_markup, parse_mode=HTML_PM)
+    await message.answer(
+        text, 
+        reply_markup=keyboards.check_markup, 
+        parse_mode=HTML_PM
+    )
 
 
 @dp.message_handler(state=GiftRecState.check)
@@ -148,7 +165,11 @@ async def quest_final(message: Message, state: FSMContext):
     msg = message.text
 
     if msg == 'OK':
-        await message.answer('Ищу подарки...', reply_markup=keyboards.none, parse_mode=HTML_PM)
+        await message.answer('''
+Начинаю искать подарки. Этот процесс не быстрый, обычно он занимает от минуты \
+до нескольких минут ⏱️''',
+            reply_markup=keyboards.none, parse_mode=HTML_PM
+        )
 
         query = {}
         async with state.proxy() as data:
@@ -156,33 +177,65 @@ async def quest_final(message: Message, state: FSMContext):
                 query[key + '_info'] = data[key + '_info']
 
         try:
-            gpt_answer = ask_gpt(query)
+            while True:
+                status, gpt_answer = ask_gpt(query)
+
+                if status == 0:
+                    break
+                elif status == 1:
+                    # minute limit exceeded
+                    await message.answer(
+                        'Нужно подождать еще чуть-чуть 😁',
+                        reply_markup=keyboards.none, parse_mode=HTML_PM
+                    )
+                    asyncio.sleep(25)
+                    break
+                elif status == 2:
+                    # day limit exceeded
+                    await message.answer(
+                        'К сожалению, сейчас слишком много запросов, не \
+успеваю ответить на все. Попробуй написать мне чуть позже, через несколько \
+часов 😓',
+                        reply_markup=keyboards.none, parse_mode=HTML_PM
+                    )
+                    await state.finish()
+                    return
+                
             gift_names = get_gift_names(gpt_answer)
 
             budget = data['budget_info']
             links = parser.get_links(gift_names, max_price=budget)
 
             def format_links(item_list):
-                formatted_string = ""
+                s = ''
 
                 for link, item, price in item_list:
-                    formatted_string += f"{item} по цене {price}:\n \t {link}\n\n"
+                    s += f'{item} по цене {price}₽:\n \t {link}\n\n'
 
-                return formatted_string
+                return s
 
+            products = format_links(links)
 
+            save_answer(data, gpt_answer, links)
 
-            result_products = format_links(sorted(links, key=lambda x: x[2]))
-            answer = f'{gpt_answer}\n\nКупить подарки можно здесь:\n\n{result_products}'
-
-            await message.answer(answer, parse_mode=HTML_PM)
-        except:
-            await message.answer('Не удалось получить подарки 😔\nПопробуйте позже')
+            await message.answer(
+                f'{gpt_answer}\nКупить подарки можно здесь:\n\n{products}', 
+                parse_mode=HTML_PM
+            )
+        except Exception as e:
+            await message.answer(
+                'Не удалось получить подарки 😔\nПопробуйте позже'
+            )
+            print(e)
         finally:
             await state.finish()
     else:
         await GiftRecState.start.set()
-        await message.answer('Хорошо, начнем заново!', reply_markup=keyboards.none, parse_mode=HTML_PM)
+        await message.answer(
+            'Хорошо, начнем заново!', 
+            reply_markup=keyboards.none, 
+            parse_mode=HTML_PM
+        )
         await send_help(message, state)
 
 
